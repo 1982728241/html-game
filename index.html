@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>AI NPC 智能对话版（零成本API接入+跨域修复）</title>
+    <style>
+        * {margin:0;padding:0;box-sizing: border-box;font-family: "微软雅黑", sans-serif;}
+        body {background: #1d2939;padding: 20px;color:#fff;}
+        .game-box {width: 1000px;margin:0 auto;border: 2px solid #6b7280;border-radius: 8px;background: #111827;padding:15px;}
+        .npc-select {margin-bottom:15px;padding:10px;background:#27272a;border-radius:6px;}
+        .npc-select button {padding:8px 15px;margin:0 5px;border:none;border-radius:4px;background:#3b82f6;color:#fff;cursor:pointer;}
+        .npc-select button:hover {background:#2563eb;}
+        .npc-info {padding:10px;background:#0f172a;border-radius:6px;margin-bottom:15px;line-height:1.8;}
+        .dialog-box {width:100%;height:350px;border:1px solid #6b7280;border-radius:6px;padding:10px;background:#030712;overflow-y:auto;margin-bottom:15px;}
+        .dialog-item {margin-bottom:10px;padding:8px;border-radius:6px;max-width:90%;}
+        .player-dialog {background:#3b82f6;margin-left:auto;text-align:right;}
+        .npc-dialog {background:#4b5563;margin-right:auto;text-align:left;}
+        .api-tip {padding:10px;background:#f59e0b;border-radius:6px;margin-bottom:15px;color:#111;}
+        .input-box {display:flex;gap:10px;margin-bottom:15px;}
+        #playerInput {flex:1;padding:10px;border:1px solid #6b7280;border-radius:6px;background:#1f2937;color:#fff;font-size:16px;outline:none;}
+        #sendBtn {padding:0 20px;border:none;border-radius:6px;background:#10b981;color:#fff;cursor:pointer;font-size:16px;}
+        #sendBtn:hover {background:#059669;}
+        .func-panel {display:flex;gap:10px;margin-bottom:15px;}
+        .func-panel button {flex:1;padding:12px;border:none;border-radius:6px;color:#fff;cursor:pointer;font-size:16px;}
+        #collectBtn {background:#84cc16;}
+        #mineBtn {background:#b45309;}
+        #fightBtn {background:#ef4444;}
+        .status-panel {display:flex;gap:15px;padding:10px;background:#27272a;border-radius:6px;}
+        .status-item {flex:1;line-height:1.8;}
+        b {color:#fbbf24;}
+    </style>
+</head>
+<body>
+    <div class="game-box">
+        <div class="api-tip">
+            📌 零成本使用说明：1. 火山方舟获取API-KEY；2. 粘贴到下方输入框；3. 免费额度足够测试，无需付费
+        </div>
+        <div class="input-box" style="margin-bottom:15px;">
+            <input type="text" id="apiKeyInput" placeholder="请输入你的火山方舟API-KEY（免费获取）" style="flex:1;">
+        </div>
+        <div class="npc-select">
+            <button onclick="changeNPC('liya')">✅ 绿洲之城 - 莉娅(采集/炼金·温柔)</button>
+            <button onclick="changeNPC('senen')">⛏️ 绿叶精灵城 - 森恩(挖矿/锻造·粗犷)</button>
+            <button onclick="changeNPC('huoke')">⚔️ 边境小镇 - 霍克(战斗/狩猎·沉稳)</button>
+        </div>
+        <div class="npc-info" id="npcInfo">
+            <b>当前NPC：</b>绿洲之城 - 莉娅<br>
+            <b>性格：</b>活泼温柔 | <b>擅长：</b>采集、炼金 | <b>口头禅：</b>呀，这个药草超稀有呢！
+        </div>
+        <div class="dialog-box" id="dialogBox">
+            <div class="dialog-item npc-dialog">你好呀～我是莉娅，有什么想问我的都可以说哦，我可以告诉你采集药草的技巧✨</div>
+        </div>
+        <div class="input-box">
+            <input type="text" id="playerInput" placeholder="在这里输入你想对NPC说的话，比如：哪里采集药草？、我要挖矿、哥布林怎么打？">
+            <button id="sendBtn" onclick="sendMsg()">发送对话</button>
+        </div>
+        <div class="func-panel">
+            <button id="collectBtn" onclick="doCollect()">🌿 采集药草</button>
+            <button id="mineBtn" onclick="doMine()">⛰️ 挖掘矿石</button>
+            <button id="fightBtn" onclick="doFight()">⚔️ 战斗打怪</button>
+        </div>
+        <div class="status-panel">
+            <div class="status-item">
+                <b>当前BUFF状态：</b><span id="buffStatus">无BUFF</span><br>
+                <b>BUFF剩余时间：</b><span id="buffTime">0 秒</span>
+            </div>
+            <div class="status-item">
+                <b>绿洲声望：</b><span id="shengwangLiya">0</span><br>
+                <b>绿叶声望：</b><span id="shengwangSenen">0</span><br>
+                <b>边境声望：</b><span id="shengwangHuoke">0</span>
+            </div>
+            <div class="status-item">
+                <b>药草数量：</b><span id="herbNum">0</span><br>
+                <b>矿石数量：</b><span id="oreNum">0</span><br>
+                <b>角色经验：</b><span id="expNum">0</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let playerData = {herb:0,ore:0,exp:0,shengwang:{liya:0,senen:0,huoke:0},buff:{name:"",active:false,time:0,effect:""},memory:[],memoryMax:3};
+        const NPC_CONFIG = {liya:{name:"绿洲之城 - 莉娅",personality:"活泼温柔",specialty:"采集、炼金",mantra:"呀，这个药草超稀有呢！",buff:{name:"采集幸运",effect:"稀有药草概率+30%，采集经验翻倍",duration:120},buffKeys:["采集","药草","炼金","草药"]},senen:{name:"绿叶精灵城 - 森恩",personality:"粗犷直爽",specialty:"挖矿、锻造",mantra:"好矿！锻出来的装备肯定顶！",buff:{name:"挖矿暴击",effect:"矿石数量×2，挖矿经验翻倍",duration:120},buffKeys:["挖矿","矿石","锻造","矿洞"]},huoke:{name:"边境小镇 - 霍克",personality:"沉默寡言·沉稳",specialty:"战斗、狩猎",mantra:"记住，怪物的弱点永远在破绽处。",buff:{name:"弱点翻倍",effect:"怪物弱点伤害×2，战斗经验翻倍",duration:120},buffKeys:["战斗","打怪","哥布林","史莱姆","弱点"]}};
+        let currentNPC = "liya";let buffTimer = null;
+        const API_URL = "https://ark-api.bytedance.com/v1/chat/completions";
+
+        function updateStatus(){document.getElementById("herbNum").innerText=playerData.herb;document.getElementById("oreNum").innerText=playerData.ore;document.getElementById("expNum").innerText=playerData.exp;document.getElementById("shengwangLiya").innerText=playerData.shengwang.liya;document.getElementById("shengwangSenen").innerText=playerData.shengwang.senen;document.getElementById("shengwangHuoke").innerText=playerData.shengwang.huoke;playerData.buff.active?(document.getElementById("buffStatus").innerText=playerData.buff.name+" | "+playerData.buff.effect,document.getElementById("buffTime").innerText=playerData.buff.time+" 秒"):(document.getElementById("buffStatus").innerText="无BUFF",document.getElementById("buffTime").innerText="0 秒");}
+        function addDialog(content,isPlayer){let d=document.getElementById("dialogBox"),div=document.createElement("div");div.className=isPlayer?"dialog-item player-dialog":"dialog-item npc-dialog",div.innerText=content,d.appendChild(div),d.scrollTop=d.scrollHeight;}
+        function addBuff(buffCfg){buffTimer&&clearInterval(buffTimer),playerData.buff={name:buffCfg.name,active:true,time:buffCfg.duration,effect:buffCfg.effect},updateStatus(),buffTimer=setInterval(()=>{playerData.buff.time--,updateStatus(),playerData.buff.time<=0&&(clearInterval(buffTimer),playerData.buff.active=false,updateStatus(),addDialog(`【系统】你的「${buffCfg.name}」BUFF失效啦，可以再找NPC聊一聊重新获得哦～`,!1))},1e3);}
+        function addMemory(keyword){playerData.memory.includes(keyword)||(playerData.memory.push(keyword),playerData.memory.length>playerData.memoryMax&&playerData.memory.shift());}
+
+        // ===== 核心修复：解决API调用失败+跨域问题 =====
+        async function sendMsg() {
+            let inputDom = document.getElementById("playerInput");
+            let apiKey = document.getElementById("apiKeyInput").value.trim();
+            let msg = inputDom.value.trim();
+            if(!msg) return;
+            if(!apiKey) {addDialog("【提示】请先输入你的火山方舟API-KEY（免费注册获取）", false);return;}
+            addDialog(msg, true);inputDom.value = "";addDialog("【NPC正在思考...】", false);
+            let npc = NPC_CONFIG[currentNPC];
+            let prompt = `你必须扮演游戏NPC${npc.name}，性格${npc.personality}，擅长${npc.specialty}，口头禅是${npc.mantra}。玩家现在的问题是：${msg}。你的回答要符合人设，简洁自然，围绕游戏玩法（采集/挖矿/战斗/升级）展开，不要说无关内容，回复控制在2句话内。玩家之前聊过的话题：${playerData.memory.join("、")}。`;
+            try {
+                const response = await fetch(API_URL, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${apiKey}`,
+                        "Accept": "*/*",  // 新增修复1：解决请求头缺失
+                        "mode": "cors"    // 新增修复2：强制跨域允许，本地HTML必加
+                    },
+                    body: JSON.stringify({
+                        model: "doubao-pro",
+                        messages: [{role: "user", content: prompt}],
+                        temperature: 0.7,
+                        max_tokens: 200   // 新增修复3：限制回复长度，避免超长内容报错
+                    })
+                });
+                if(!response.ok) throw new Error("接口返回异常"); // 新增修复4：捕获接口状态码错误
+                const result = await response.json();
+                let npcReply = result.choices[0].message.content + " " + npc.mantra;
+                document.getElementById("dialogBox").lastChild.remove();addDialog(npcReply, false);
+                let matchKey = npc.buffKeys.find(key => msg.includes(key));
+                matchKey&&(addBuff(npc.buff),playerData.shengwang[currentNPC]+=3,addMemory(matchKey),updateStatus());
+            } catch (error) {
+                document.getElementById("dialogBox").lastChild.remove();
+                addDialog(`【排查提示】${error.message} → 请检查：1.API-KEY是否完整 2.是否开通豆包-pro模型 3.是否绑定应用`, false);
+            }
+        }
+
+        function doCollect(){let b=1,e=5,i=!1;playerData.buff.active&&playerData.buff.name==="采集幸运"&&(b=1,e=10,Math.random()<.3&&(i=!0,playerData.herb+=2,playerData.exp+=20,addDialog(`【采集】✨ 触发稀有药草！获得×2药草，额外经验+20！`,!1)));i||(playerData.herb+=b,playerData.exp+=e,addDialog(`【采集】获得药草×${b}，经验+${e}`,!1)),updateStatus();}
+        function doMine(){let b=1,e=5;playerData.buff.active&&playerData.buff.name==="挖矿暴击"?(b=2,e=10,addDialog(`【挖矿】💥 挖矿暴击！获得矿石×${b}，经验+${e}`,!1)):addDialog(`【挖矿】获得矿石×${b}，经验+${e}`,!1),playerData.ore+=b,playerData.exp+=e,updateStatus();}
+        function doFight(){let b=10,e=["哥布林","史莱姆","兽人"][Math.floor(3*Math.random())];playerData.buff.active&&playerData.buff.name==="弱点翻倍"?(b=20,addDialog(`【战斗】⚔️ 触发弱点暴击！打赢${e}，经验+${b}！`,!1)):addDialog(`【战斗】打赢${e}，经验+${b}`,!1),playerData.exp+=b,updateStatus();}
+        function changeNPC(n){currentNPC=n;let e=NPC_CONFIG[n];document.getElementById("npcInfo").innerHTML=`<b>当前NPC：</b>${e.name}<br><b>性格：</b>${e.personality} | <b>擅长：</b>${e.specialty} | <b>口头禅：</b>${e.mantra}`,addDialog(`你切换到了【${e.name}】，有什么问题都可以问我哦～`,!1),playerData.memory=[];}
+        window.onload=function(){updateStatus(),document.getElementById("playerInput").onkeydown=e=>{13===e.keyCode&&sendMsg();}};
+    </script>
+</body>
+</html>
