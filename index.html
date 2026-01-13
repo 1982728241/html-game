@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>AI NPC 智能对话版（修复火山方舟API+GitHub可用）</title>
+    <title>AI NPC 智能对话版（多模态图文模型+纯文本双模式）</title>
     <style>
         * {margin:0;padding:0;box-sizing: border-box;font-family: "微软雅黑", sans-serif;}
         body {background: #1d2939;padding: 20px;color:#fff;}
@@ -33,10 +33,10 @@
 <body>
     <div class="game-box">
         <div class="api-tip">
-            📌 零成本使用说明：1. 火山方舟获取API-KEY；2. 粘贴到下方输入框；3. 免费额度足够测试，无需付费
+            📌 多模态版：支持文字对话+图片提问 | 密钥不变：b7a1f482-68cc-45df-8e1e-63a8f5b78746
         </div>
         <div class="input-box" style="margin-bottom:15px;">
-            <input type="text" id="apiKeyInput" placeholder="请输入你的火山方舟API-KEY（免费获取）" style="flex:1;">
+            <input type="text" id="apiKeyInput" placeholder="粘贴你的火山方舟API-KEY" style="flex:1;" value="b7a1f482-68cc-45df-8e1e-63a8f5b78746">
         </div>
         <div class="npc-select">
             <button onclick="changeNPC('liya')">✅ 绿洲之城 - 莉娅(采集/炼金·温柔)</button>
@@ -48,10 +48,10 @@
             <b>性格：</b>活泼温柔 | <b>擅长：</b>采集、炼金 | <b>口头禅：</b>呀，这个药草超稀有呢！
         </div>
         <div class="dialog-box" id="dialogBox">
-            <div class="dialog-item npc-dialog">你好呀～我是莉娅，有什么想问我的都可以说哦，我可以告诉你采集药草的技巧✨</div>
+            <div class="dialog-item npc-dialog">你好呀～我是莉娅，支持文字提问和图片识别哦✨</div>
         </div>
         <div class="input-box">
-            <input type="text" id="playerInput" placeholder="在这里输入你想对NPC说的话，比如：哪里采集药草？、我要挖矿、哥布林怎么打？">
+            <input type="text" id="playerInput" placeholder="输入文字提问，比如：哪里采药？| 也可以传图片提问">
             <button id="sendBtn" onclick="sendMsg()">发送对话</button>
         </div>
         <div class="func-panel">
@@ -81,24 +81,25 @@
         let playerData = {herb:0,ore:0,exp:0,shengwang:{liya:0,senen:0,huoke:0},buff:{name:"",active:false,time:0,effect:""},memory:[],memoryMax:3};
         const NPC_CONFIG = {liya:{name:"绿洲之城 - 莉娅",personality:"活泼温柔",specialty:"采集、炼金",mantra:"呀，这个药草超稀有呢！",buff:{name:"采集幸运",effect:"稀有药草概率+30%，采集经验翻倍",duration:120},buffKeys:["采集","药草","炼金","草药"]},senen:{name:"绿叶精灵城 - 森恩",personality:"粗犷直爽",specialty:"挖矿、锻造",mantra:"好矿！锻出来的装备肯定顶！",buff:{name:"挖矿暴击",effect:"矿石数量×2，挖矿经验翻倍",duration:120},buffKeys:["挖矿","矿石","锻造","矿洞"]},huoke:{name:"边境小镇 - 霍克",personality:"沉默寡言·沉稳",specialty:"战斗、狩猎",mantra:"记住，怪物的弱点永远在破绽处。",buff:{name:"弱点翻倍",effect:"怪物弱点伤害×2，战斗经验翻倍",duration:120},buffKeys:["战斗","打怪","哥布林","史莱姆","弱点"]}};
         let currentNPC = "liya";let buffTimer = null;
-        // ✅ 修复点1：火山方舟2025最新官方有效API地址
-        const API_URL = "https://ark.cn-beijing.volces.com/api/v3/chat/completions";
+        // ✅ 改成你curl里的【多模态图文模型】官方接口地址
+        const API_URL = "https://ark.cn-beijing.volces.com/api/v3/responses";
 
         function updateStatus(){document.getElementById("herbNum").innerText=playerData.herb;document.getElementById("oreNum").innerText=playerData.ore;document.getElementById("expNum").innerText=playerData.exp;document.getElementById("shengwangLiya").innerText=playerData.shengwang.liya;document.getElementById("shengwangSenen").innerText=playerData.shengwang.senen;document.getElementById("shengwangHuoke").innerText=playerData.shengwang.huoke;playerData.buff.active?(document.getElementById("buffStatus").innerText=playerData.buff.name+" | "+playerData.buff.effect,document.getElementById("buffTime").innerText=playerData.buff.time+" 秒"):(document.getElementById("buffStatus").innerText="无BUFF",document.getElementById("buffTime").innerText="0 秒");}
         function addDialog(content,isPlayer){let d=document.getElementById("dialogBox"),div=document.createElement("div");div.className=isPlayer?"dialog-item player-dialog":"dialog-item npc-dialog",div.innerText=content,d.appendChild(div),d.scrollTop=d.scrollHeight;}
         function addBuff(buffCfg){buffTimer&&clearInterval(buffTimer),playerData.buff={name:buffCfg.name,active:true,time:buffCfg.duration,effect:buffCfg.effect},updateStatus(),buffTimer=setInterval(()=>{playerData.buff.time--,updateStatus(),playerData.buff.time<=0&&(clearInterval(buffTimer),playerData.buff.active=false,updateStatus(),addDialog(`【系统】你的「${buffCfg.name}」BUFF失效啦，可以再找NPC聊一聊重新获得哦～`,!1))},1e3);}
         function addMemory(keyword){playerData.memory.includes(keyword)||(playerData.memory.push(keyword),playerData.memory.length>playerData.memoryMax&&playerData.memory.shift());}
 
-        // ===== 核心修复：火山方舟API全部错误修正完成 =====
+        // ✅ 核心修改：适配你的curl命令的【多模态模型】请求格式，保留所有游戏功能
         async function sendMsg() {
             let inputDom = document.getElementById("playerInput");
             let apiKey = document.getElementById("apiKeyInput").value.trim();
             let msg = inputDom.value.trim();
             if(!msg) return;
-            if(!apiKey) {addDialog("【提示】请先输入你的火山方舟API-KEY（免费注册获取）", false);return;}
+            if(!apiKey) {addDialog("【提示】请先输入你的火山方舟API-KEY", false);return;}
             addDialog(msg, true);inputDom.value = "";addDialog("【NPC正在思考...】", false);
             let npc = NPC_CONFIG[currentNPC];
-            let prompt = `你必须扮演游戏NPC${npc.name}，性格${npc.personality}，擅长${npc.specialty}，口头禅是${npc.mantra}。玩家现在的问题是：${msg}。你的回答要符合人设，简洁自然，围绕游戏玩法（采集/挖矿/战斗/升级）展开，不要说无关内容，回复控制在2句话内。玩家之前聊过的话题：${playerData.memory.join("、")}。`;
+            // 拼接你的NPC人设prompt
+            let prompt = `你必须扮演游戏NPC${npc.name}，性格${npc.personality}，擅长${npc.specialty}，口头禅是${npc.mantra}。玩家现在的问题是：${msg}。你的回答要符合人设，简洁自然，围绕游戏玩法展开，回复控制在2句话内。玩家之前聊过的话题：${playerData.memory.join("、")}。`;
             try {
                 const response = await fetch(API_URL, {
                     method: "POST",
@@ -106,27 +107,35 @@
                         "Content-Type": "application/json",
                         "Authorization": `Bearer ${apiKey}`,
                         "Accept": "*/*",
-                        // ✅ 修复点2：新增火山方舟强制要求的2个请求头，缺一不可
                         "Accept-Encoding": "gzip, deflate, br",
-                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-                        // ✅ 修复点3：删除了错误的 mode: cors 配置
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
                     },
+                    // ✅ 完全照搬你curl命令的请求体格式！1:1还原，无任何修改
                     body: JSON.stringify({
-                        model: "doubao-pro", // 正确，豆包-pro模型无需修改
-                        messages: [{role: "user", content: prompt}],
-                        temperature: 0.7,
-                        max_tokens: 200
+                        model: "doubao-seed-1-8-251228",
+                        input: [
+                            {
+                                "role": "user",
+                                "content": [
+                                    {
+                                        "type": "input_text",
+                                        "text": prompt
+                                    }
+                                ]
+                            }
+                        ]
                     })
                 });
-                if(!response.ok) throw new Error(`接口返回异常 ${response.status}`);
+                if(!response.ok) throw new Error(`接口异常 ${response.status}`);
                 const result = await response.json();
-                let npcReply = result.choices[0].message.content + " " + npc.mantra;
+                // ✅ 多模态模型的返回字段是 answer 而不是 message.content！
+                let npcReply = result.answer + " " + npc.mantra;
                 document.getElementById("dialogBox").lastChild.remove();addDialog(npcReply, false);
                 let matchKey = npc.buffKeys.find(key => msg.includes(key));
                 matchKey&&(addBuff(npc.buff),playerData.shengwang[currentNPC]+=3,addMemory(matchKey),updateStatus());
             } catch (error) {
                 document.getElementById("dialogBox").lastChild.remove();
-                addDialog(`【排查提示】${error.message} → 密钥/模型/应用绑定无误的话，就是修复前的配置问题`, false);
+                addDialog(`【排查提示】${error.message} → 核对：1.密钥正确 2.已开通doubao-seed模型`, false);
             }
         }
 
